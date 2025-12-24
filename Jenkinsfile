@@ -5,57 +5,55 @@ pipeline {
         maven 'Maven3'
     }
     environment {
-	    APP_NAME = "register-app-pipeline"
-            RELEASE = "1.0.0"
-            DOCKER_USER = "ryansaad85"
-            DOCKER_PASS = 'dockerhub'
-            IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
-            IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
-	    JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
+        APP_NAME = "register-app-pipeline"
+        RELEASE = "1.0.0"
+        DOCKER_USER = "ryansaad85"  // Ensure this is your DockerHub username
+        DOCKER_PASS = 'dockerhub'   // This matches the Credential ID in Jenkins
+        IMAGE_NAME = "${DOCKER_USER}" + "/" + "${APP_NAME}"
+        IMAGE_TAG = "${RELEASE}-${BUILD_NUMBER}"
+        JENKINS_API_TOKEN = credentials("JENKINS_API_TOKEN")
     }
-    stages{
+    stages {
         stage("Cleanup Workspace"){
-                steps {
+            steps {
                 cleanWs()
-                }
+            }
         }
 
         stage("Checkout from SCM"){
-                steps {
-                    git branch: 'main', credentialsId: 'github', url: 'https://github.com/ryansaad/register-app.git'
-                }
+            steps {
+                git branch: 'main', credentialsId: 'github', url: 'https://github.com/ryansaad/register-app.git'
+            }
         }
 
         stage("Build Application"){
             steps {
                 sh "mvn clean package"
             }
+        }
 
-       }
-
-       stage("Test Application"){
-           steps {
-                 sh "mvn test"
-           }
-       }
-
-       stage("SonarQube Analysis"){
-           steps {
-	           script {
-		        withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') { 
-                        sh "mvn sonar:sonar"
-		        }
-	           }	
-           }
-       }
-
-       stage("Quality Gate"){
-           steps {
-               script {
-                    waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
-                }	
+        stage("Test Application"){
+            steps {
+                sh "mvn test"
             }
+        }
 
+        stage("SonarQube Analysis"){
+            steps {
+                script {
+                    withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') { 
+                        sh "mvn sonar:sonar"
+                    }
+                }   
+            }
+        }
+
+        stage("Quality Gate"){
+            steps {
+                script {
+                    waitForQualityGate abortPipeline: false, credentialsId: 'jenkins-sonarqube-token'
+                }   
+            }
         }
 
         stage("Build & Push Docker Image") {
@@ -71,33 +69,32 @@ pipeline {
                     }
                 }
             }
+        }
 
-       }
+        stage("Trivy Scan") {
+            steps {
+                script {
+                   // Double quotes used here for variable interpolation
+                   sh "docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
+                }
+            }
+        }
 
-       stage("Trivy Scan") {
-           steps {
-               script {
-	            sh "docker run -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image ${IMAGE_NAME}:latest --no-progress --scanners vuln --exit-code 0 --severity HIGH,CRITICAL --format table"
-           }
-       }
-
-       stage ('Cleanup Artifacts') {
-           steps {
-               script {
+        stage ('Cleanup Artifacts') {
+            steps {
+                script {
                     sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG}"
                     sh "docker rmi ${IMAGE_NAME}:latest"
-               }
-          }
-       }
+                }
+            }
+        }
 
-       // stage("Trigger CD Pipeline") {
-       //      steps {
-       //          script {
-       //              sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'ec2-13-232-128-192.ap-south-1.compute.amazonaws.com:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
-       //          }
-       //      }
-       // }
-    }
-
-   
-}
+        // stage("Trigger CD Pipeline") {
+        //     steps {
+        //         script {
+        //             sh "curl -v -k --user clouduser:${JENKINS_API_TOKEN} -X POST -H 'cache-control: no-cache' -H 'content-type: application/x-www-form-urlencoded' --data 'IMAGE_TAG=${IMAGE_TAG}' 'http://YOUR-JENKINS-IP:8080/job/gitops-register-app-cd/buildWithParameters?token=gitops-token'"
+        //         }
+        //     }
+        // }
+    } // End of stages
+} // End of pipeline
