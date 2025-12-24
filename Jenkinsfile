@@ -42,7 +42,8 @@ pipeline {
             steps {
                 script {
                     withSonarQubeEnv(credentialsId: 'jenkins-sonarqube-token') { 
-                        sh "mvn sonar:sonar"
+                        // Use the full plugin name to force Maven to find it
+                        sh "mvn org.sonarsource.scanner.maven:sonar-maven-plugin:sonar"
                     }
                 }   
             }
